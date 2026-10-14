@@ -34,7 +34,7 @@ SERVICE_DEFINITIONS = r'''neff_select_hot_air:
           min: 50
           max: 250
           step: 1
-          unit_of_measurement: "°C"
+          unit_of_measurement: "В°C"
     minutes:
       required: true
       selector:
@@ -92,7 +92,7 @@ neff_select_program:
           min: 30
           max: 290
           step: 1
-          unit_of_measurement: "°C"
+          unit_of_measurement: "В°C"
     minutes:
       required: false
       selector:
@@ -242,6 +242,26 @@ def patch_platform(s: str, platform: str) -> str:
     return replace_once(s, anchor, addition + anchor, f'{platform}.py')
 
 
+def patch_neff_sensor_order(s: str) -> str:
+    """Register the two NEFF status sensors ahead of other sensor entities."""
+    if '# NEFF_REMOTE_SENSOR_ORDER' in s:
+        return s
+    if 'get_platform_entities("sensor", config_entry.runtime_data)' not in s:
+        raise RuntimeError('sensor.py: NEFF sensor platform hook is missing')
+    marker = '    async_add_entites(entities)'
+    block = (
+        '    # NEFF_REMOTE_SENSOR_ORDER: these two appear first on registration.\n'
+        '    remote_keys = ("neff_remote_control_active", "neff_remote_control_start_allowed")\n'
+        '    entities = sorted(\n'
+        '        entities,\n'
+        '        key=lambda entity: (remote_keys.index(entity.entity_description.key)\n'
+        '                            if entity.entity_description.key in remote_keys\n'
+        '                            else len(remote_keys)),\n'
+        '    )\n'
+    )
+    return replace_once(s, marker, block + marker, 'sensor.py')
+
+
 def replace_once(s: str, marker: str, replacement: str, path: str) -> str:
     n = s.count(marker)
     if n != 1:
@@ -296,12 +316,17 @@ def patch_services(s: str) -> str:
 def patch_remove_neff_entity_descriptions(s: str) -> str:
     marker = '    return available_entities'
     if '# NEFF_V62_ENTITY_REMOVE' in s:
-        return s
+        # Upgrade an already patched 1.0.6 installation without recreating entities.
+        old = '"sensor": {"sensor_power_state"},'
+        replacement = '"sensor": {"sensor_power_state", "sensor_door_state"},'
+        if replacement in s:
+            return s
+        return replace_once(s, old, replacement, 'entity_descriptions/__init__.py')
     block = '''    # NEFF_V62_ENTITY_REMOVE: only suppress duplicated controls on this NEFF.
     if (appliance.info.get("brand", "").upper() == "NEFF"
             and appliance.info.get("vib") == "C28MT23H0"):
         unwanted = {
-            "sensor": {"sensor_power_state"},
+            "sensor": {"sensor_power_state", "sensor_door_state"},
             "select": {"select_power_state", "select_pyrolysis_level"},
             "program": {"select_program"},
             "number": {"number_oven_setpoint_temperature", "number_duration"},
@@ -358,7 +383,7 @@ def main() -> None:
         'entity_descriptions/__init__.py': [patch_descriptions_init, patch_remove_neff_entity_descriptions],
         'entity_descriptions/descriptions_definitions.py': [patch_descriptions_definitions],
         'entity_descriptions/common.py': [patch_common],
-        'sensor.py': [lambda s: patch_platform(s, 'sensor')],
+        'sensor.py': [lambda s: patch_platform(s, 'sensor'), patch_neff_sensor_order],
         'number.py': [lambda s: patch_platform(s, 'number')],
         'switch.py': [lambda s: patch_platform(s, 'switch')],
         'button.py': [lambda s: patch_platform(s, 'button')],

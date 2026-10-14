@@ -165,7 +165,7 @@ class HCLiveOvenClock(HCEntity, SensorEntity):
     @property
     def native_value(self):
         now = self._now()
-        return now.isoformat(timespec="seconds") if now is not None else None
+        return now.strftime("%d.%m.%Y %H:%M:%S") if now is not None else None
 
     @property
     def extra_state_attributes(self):

@@ -165,7 +165,7 @@ class HCLiveOvenClock(HCEntity, SensorEntity):
     @property
     def native_value(self):
         now = self._now()
-        return now.strftime("%H:%M:%S") if now is not None else None
+        return now.isoformat(timespec="seconds") if now is not None else None
 
     @property
     def extra_state_attributes(self):
@@ -191,7 +191,7 @@ class HCLiveOvenClock(HCEntity, SensorEntity):
 
     async def _tick_loop(self):
         while True:
-            await asyncio.sleep(10)
+            await asyncio.sleep(30)
             if self._entity.value:
                 self._ticks += 1
                 self.async_write_ha_state()

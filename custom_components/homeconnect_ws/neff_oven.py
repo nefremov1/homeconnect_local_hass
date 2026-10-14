@@ -218,7 +218,7 @@ def temperature_range(spec: Spec) -> tuple[int, int]:
 
 def _temperature(value, spec: Spec) -> int:
     a, b = temperature_range(spec)
-    return _whole(value, f'{spec.label} temperature °C', a, b)
+    return _whole(value, f'{spec.label} temperature В°C', a, b)
 
 
 def _duration(value, spec: Spec) -> int:
@@ -428,6 +428,17 @@ class NeffCurrentProgramSensor(HCEntity, SensorEntity):
                 'controls_ready': ready_for_select(self._runtime_data)}
 
 
+class NeffRemoteStatusSensor(HCEntity, SensorEntity):
+    """Expose the oven's existing remote-control flags as read-only sensors."""
+
+    @property
+    def native_value(self):
+        status = self._entity.value_raw
+        if type(status) is not bool:
+            return None
+        return 'On' if status else 'Off'
+
+
 class NeffOptionSensor(HCEntity, SensorEntity):
     @property
     def native_value(self):
@@ -597,6 +608,12 @@ def get_platform_entities(platform: str, runtime: HCData) -> list[HCEntity]:
         ]
     elif platform == 'sensor':
         specs = [
+            (NeffRemoteStatusSensor, HCSensorEntityDescription(
+                key='neff_remote_control_active', name='Remote Control',
+                entity=REMOTE, icon='mdi:remote')),
+            (NeffRemoteStatusSensor, HCSensorEntityDescription(
+                key='neff_remote_control_start_allowed', name='Remote Start Allowed',
+                entity=REMOTE_START, icon='mdi:remote')),
             (NeffCurrentProgramSensor, HCSensorEntityDescription(
                 key='neff_current_program', name='Current program',
                 entity=SELECTED, entities=[x for x in (ACTIVE, REMOTE_START, DOOR)
@@ -730,6 +747,7 @@ def register_neff_services(hass: HomeAssistant):
 # can be enabled on the current startup. Nothing touches the working power switch.
 NEFF_LEGACY_ENTITY_IDS = (
     ('sensor', 'sensor_power_state'),            # State of power (NOT switch_power_state)
+    ('sensor', 'sensor_door_state'),             # Duplicate of the binary Door sensor
     ('select', 'select_power_state'),            # Optional stock power dropdown
     ('select', 'select_program'),                # Same unique ID (compatibility)
     ('number', 'number_oven_setpoint_temperature'),
